@@ -358,6 +358,52 @@
             return result;
         }
 
+        public Map<String, String> getAssignedVisitorNamesByComplaintIds(List<String> complaintIds) {
+            Map<String, LinkedHashSet<String>> visitorNamesByComplaint = new LinkedHashMap<>();
+            if (complaintIds == null || complaintIds.isEmpty()) {
+                return new LinkedHashMap<>();
+            }
+
+            complaintIds.stream()
+                    .filter(Objects::nonNull)
+                    .map(String::trim)
+                    .filter(id -> !id.isEmpty())
+                    .distinct()
+                    .forEach(id -> visitorNamesByComplaint.put(id, new LinkedHashSet<>()));
+
+            if (visitorNamesByComplaint.isEmpty()) {
+                return new LinkedHashMap<>();
+            }
+
+            List<ComplaintHistory> visitorHistory =
+                    complaintHistoryRepository.findByComplaintIdInAndFieldNameOrderByChangeDateAsc(
+                            new ArrayList<>(visitorNamesByComplaint.keySet()),
+                            "visitorName"
+                    );
+
+            for (ComplaintHistory history : visitorHistory) {
+                String visitorName = history.getNewValue();
+                if (visitorName == null) {
+                    continue;
+                }
+
+                visitorName = visitorName.trim();
+                if (visitorName.isEmpty() || "N/A".equalsIgnoreCase(visitorName)) {
+                    continue;
+                }
+
+                visitorNamesByComplaint
+                        .computeIfAbsent(history.getComplaintId(), key -> new LinkedHashSet<>())
+                        .add(visitorName);
+            }
+
+            Map<String, String> result = new LinkedHashMap<>();
+            visitorNamesByComplaint.forEach((complaintId, visitorNames) ->
+                    result.put(complaintId, String.join(", ", visitorNames))
+            );
+            return result;
+        }
+
         /**
          * Retrieve a ComplaintLog by ID.
          */
@@ -429,7 +475,9 @@
          * Fetch all complaints with a null visitorId.
          */
         public List<ComplaintLog> getComplaintsByNullVisitorId() {
-            return complaintLogRepository.findByVisitorIdIsNullAndIsMarkedInPoolTrue();
+            return complaintLogRepository.findByVisitorIdIsNullAndIsMarkedInPoolTrueAndComplaintStatusNotIn(
+                    Arrays.asList("Closed", "Pending For Closed")
+            );
         }
 
         /**
@@ -440,11 +488,16 @@
             if (complaintOpt.isPresent()) {
                 ComplaintLog complaint = complaintOpt.get();
 
+                if (isTerminalStatus(complaint.getComplaintStatus())) {
+                    return false;
+                }
+
                 // --- Save old values for history BEFORE making changes ---
                 Long oldVisitorId = complaint.getVisitorId();
                 String oldVisitorName = complaint.getVisitorName();
                 String oldStatus = complaint.getComplaintStatus();
                 Date oldScheduleDate = complaint.getScheduleDate();
+                Boolean oldMarkedInPool = complaint.getMarkedInPool();
 
                 // Fetch visitor name from the visitor service
                 String visitorName = visitorService.findVisitorNameById(visitorId);
@@ -501,6 +554,15 @@
                         today.toString(),
                         "Visit scheduled"
                 );
+                if (Boolean.TRUE.equals(oldMarkedInPool)) {
+                    saveComplaintHistory(
+                            complaint.getComplaintId(),
+                            "isMarkedInPool",
+                            "true",
+                            "false",
+                            "Assigned to visitor"
+                    );
+                }
 
                 return true;
             }
@@ -802,6 +864,7 @@
                         case "visitorId": {
                             Long oldVal = existingLog.getVisitorId();
                             Long newVal = Long.parseLong(value.toString()); // Parse value to Integer
+                            Boolean oldMarkedInPool = existingLog.getMarkedInPool();
                             existingLog.setVisitorId(newVal);
                             saveComplaintHistory(
                                     existingLog.getComplaintId(),
@@ -810,6 +873,16 @@
                                     newVal.toString(),
                                     reason
                             );
+                            if (newVal != null && Boolean.TRUE.equals(oldMarkedInPool)) {
+                                existingLog.setMarkedInPool(false);
+                                saveComplaintHistory(
+                                        existingLog.getComplaintId(),
+                                        "isMarkedInPool",
+                                        "true",
+                                        "false",
+                                        "Assigned to visitor"
+                                );
+                            }
                             break;
                         }
                         case "isPriority": {
@@ -1575,6 +1648,13 @@
         private String safeStatus(String status) {
             return status == null ? "" : status.trim();
         }
+
+        private boolean isTerminalStatus(String status) {
+            String normalized = safeStatus(status);
+            return "Closed".equalsIgnoreCase(normalized)
+                    || "Pending For Closed".equalsIgnoreCase(normalized);
+        }
+
         public String getPreviousNonVisitScheduleStatus(String complaintId) {
             // Get all history entries for this complaint, most recent first
             List<ComplaintHistory> history = complaintHistoryRepository

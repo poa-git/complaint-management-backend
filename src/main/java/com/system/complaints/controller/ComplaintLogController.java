@@ -331,6 +331,15 @@ public class ComplaintLogController {
         }
     }
 
+    @PostMapping("/assigned-visitors/batch")
+    public ResponseEntity<Map<String, String>> getAssignedVisitorsBatch(@RequestBody List<String> complaintIds) {
+        try {
+            return ResponseEntity.ok(complaintLogService.getAssignedVisitorNamesByComplaintIds(complaintIds));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(null);
+        }
+    }
+
     @GetMapping("/complaints-summary")
     public ResponseEntity<Map<String, Object>> getComplaintDashboardSummary() {
         return ResponseEntity.ok(complaintLogService.getComplaintDashboardSummary());
@@ -374,6 +383,11 @@ public class ComplaintLogController {
         Boolean markedInPool = payload.get("markedInPool");
         try {
             ComplaintLog complaintLog = complaintLogService.getComplaintById(id);
+            String status = complaintLog.getComplaintStatus() == null ? "" : complaintLog.getComplaintStatus().trim();
+            if (Boolean.TRUE.equals(markedInPool)
+                    && ("Closed".equalsIgnoreCase(status) || "Pending For Closed".equalsIgnoreCase(status))) {
+                return ResponseEntity.badRequest().body("Closed or Pending For Closed complaints cannot be marked in pool.");
+            }
             Boolean oldVal = complaintLog.getMarkedInPool();
             complaintLog.setMarkedInPool(markedInPool);
             complaintLogService.updateOnlyMarkedInPool(complaintLog);

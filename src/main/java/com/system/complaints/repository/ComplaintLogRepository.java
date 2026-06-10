@@ -49,7 +49,7 @@ public interface ComplaintLogRepository extends JpaRepository<ComplaintLog, Long
     // Find complaints by visitor's ID Null
     List<ComplaintLog> findByVisitorIdIsNullAndComplaintStatus(String complaintStatus);
 
-    List<ComplaintLog> findByVisitorIdIsNullAndIsMarkedInPoolTrue();
+    List<ComplaintLog> findByVisitorIdIsNullAndIsMarkedInPoolTrueAndComplaintStatusNotIn(List<String> statuses);
 
     // Find complaints by visitor's ID
     List<ComplaintLog> findByComplaintStatusAndScheduleDateBefore(String complaintStatus, Date date);
