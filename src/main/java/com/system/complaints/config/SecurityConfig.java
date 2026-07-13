@@ -1,6 +1,8 @@
 package com.system.complaints.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.system.complaints.model.AppUser;
+import com.system.complaints.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -27,12 +29,14 @@ import java.util.Map;
 public class SecurityConfig {
 
     private final UserDetailsService userDetailsService;
+    private final UserRepository userRepository;
 
     @Value("${cors.allowed-origins}")
     private String corsAllowedOrigins;
 
-    public SecurityConfig(UserDetailsService userDetailsService) {
+    public SecurityConfig(UserDetailsService userDetailsService, UserRepository userRepository) {
         this.userDetailsService = userDetailsService;
+        this.userRepository = userRepository;
     }
 
     @Bean
@@ -58,6 +62,14 @@ public class SecurityConfig {
                         .requestMatchers("/", "/index.html", "/static/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/login", "/perform_login").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/visit-plan/plans/pending").hasAuthority("ADMIN")
+                        .requestMatchers(HttpMethod.POST,
+                                "/visit-plan/plans/*/approve",
+                                "/visit-plan/plans/*/reject",
+                                "/visit-plan/plans/*/items/*/approve",
+                                "/visit-plan/plans/*/items/*/reject",
+                                "/visit-plan/complaints/*/approve"
+                        ).hasAuthority("ADMIN")
                         .requestMatchers("/admin/**").hasAuthority("ADMIN")
                         .requestMatchers("/user/**").hasAnyAuthority("USER", "ADMIN")
                         .anyRequest().authenticated()
@@ -84,9 +96,22 @@ public class SecurityConfig {
                             response.setStatus(200);
                             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 
-                            Map<String, String> result = new HashMap<>();
+                            AppUser appUser = userRepository.findByUsername(authentication.getName())
+                                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+                            Map<String, Object> result = new HashMap<>();
                             result.put("status", "success");
                             result.put("message", "Login successful");
+                            result.put("id", appUser.getId());
+                            result.put("username", appUser.getUsername());
+                            result.put("roles", authentication.getAuthorities().stream()
+                                    .map(authority -> authority.getAuthority())
+                                    .toList());
+                            result.put("platformType", appUser.getPlatformType());
+                            result.put("userType", appUser.getUserType());
+                            result.put("visitorId", appUser.getVisitor() != null ? appUser.getVisitor().getId() : null);
+                            result.put("visitPlanAccess",
+                                    "ADMIN".equals(appUser.getRole().getName()) || appUser.isVisitPlanAccess());
 
                             new ObjectMapper().writeValue(response.getWriter(), result);
                         })

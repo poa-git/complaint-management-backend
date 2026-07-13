@@ -31,6 +31,9 @@ public class ComplaintLog {
     private String complaintStatus;
     private String visitorName;
 
+    @Transient
+    private String allVisitorNames;
+
     @Column(name = "visitor_id")
     private Long visitorId; // New field for visitor ID
 
@@ -82,6 +85,9 @@ public class ComplaintLog {
 
     @Transient
     private String equipmentDescription; // Equipment description
+
+    @Transient
+    private Date hardwareReceivedOutwardDate; // Hardware received at station/external location
 
     // Generate complaintId before saving
     @PrePersist
@@ -175,6 +181,14 @@ public class ComplaintLog {
 
     public void setVisitorName(String visitorName) {
         this.visitorName = visitorName;
+    }
+
+    public String getAllVisitorNames() {
+        return allVisitorNames;
+    }
+
+    public void setAllVisitorNames(String allVisitorNames) {
+        this.allVisitorNames = allVisitorNames;
     }
 
     public Long getVisitorId() {
@@ -351,6 +365,14 @@ public class ComplaintLog {
         this.equipmentDescription = equipmentDescription;
     }
 
+    public Date getHardwareReceivedOutwardDate() {
+        return hardwareReceivedOutwardDate;
+    }
+
+    public void setHardwareReceivedOutwardDate(Date hardwareReceivedOutwardDate) {
+        this.hardwareReceivedOutwardDate = hardwareReceivedOutwardDate;
+    }
+
     public void setReport(String report) {
         this.report = report;
     }
@@ -396,3 +418,4 @@ public class ComplaintLog {
     }
 
 }
+

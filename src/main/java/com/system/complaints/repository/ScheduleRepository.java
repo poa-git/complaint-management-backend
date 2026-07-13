@@ -10,6 +10,7 @@ import java.util.List;
 @Repository
 public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
     List<Schedule> findByScheduledFor(Date scheduledFor);
+    boolean existsByScheduledFor(Date scheduledFor);
     List<Schedule> findByComplaintId(String complaintId);
     List<Schedule> findByScheduledForBetween(Date start, Date end);
 }

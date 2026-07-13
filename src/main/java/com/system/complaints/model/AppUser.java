@@ -20,7 +20,7 @@ public class AppUser {
     private Role role;
 
     @ManyToOne
-    @JoinColumn(name = "visitor_id", nullable = false) // Foreign key for Visitor
+    @JoinColumn(name = "visitor_id") // Office users do not necessarily map to a field visitor.
     private Visitor visitor;
 
     @Enumerated(EnumType.STRING)
@@ -30,6 +30,9 @@ public class AppUser {
     @Enumerated(EnumType.STRING)
     @Column(name = "user_type", nullable = false)
     private UserType userType;
+
+    @Column(name = "visit_plan_access", nullable = false, columnDefinition = "boolean default false")
+    private boolean visitPlanAccess;
 
     // Getters and Setters
     public Long getId() {
@@ -86,5 +89,13 @@ public class AppUser {
 
     public void setPlatformType(PlatformType platformType) {
         this.platformType = platformType;
+    }
+
+    public boolean isVisitPlanAccess() {
+        return visitPlanAccess;
+    }
+
+    public void setVisitPlanAccess(boolean visitPlanAccess) {
+        this.visitPlanAccess = visitPlanAccess;
     }
 }

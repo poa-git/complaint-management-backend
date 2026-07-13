@@ -63,6 +63,8 @@ public class LoginController {
         response.put("visitorId", visitorId);
         response.put("city", city);
         response.put("userType",userType);
+        response.put("visitPlanAccess",
+                "ADMIN".equals(appUser.getRole().getName()) || appUser.isVisitPlanAccess());
         return response;
     }
 

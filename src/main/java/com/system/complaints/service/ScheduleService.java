@@ -23,6 +23,9 @@ public class ScheduleService {
 
     @Autowired
     private ComplaintLogRepository complaintLogRepository;
+
+    @Autowired
+    private VisitPlanEntryService visitPlanEntryService;
     /**
      * Log a new schedule attempt (when a complaint is scheduled).
      */
@@ -70,6 +73,7 @@ public class ScheduleService {
             schedule.setCompletedAt(new Timestamp(System.currentTimeMillis()));
             scheduleRepository.save(schedule);
         }
+        visitPlanEntryService.updateOutcome(complaintId, scheduledFor, "Successful");
     }
 
     /**
@@ -87,6 +91,7 @@ public class ScheduleService {
             schedule.setCompletedAt(new Timestamp(System.currentTimeMillis()));
             scheduleRepository.save(schedule);
         }
+        visitPlanEntryService.updateOutcome(complaintId, scheduledFor, "Expired");
     }
 
     /**
@@ -160,6 +165,7 @@ public class ScheduleService {
             schedule.setCompletedAt(new Timestamp(System.currentTimeMillis()));
             scheduleRepository.save(schedule);
         }
+        visitPlanEntryService.updateOutcome(complaintId, scheduledFor, "Canceled");
     }
 
 }

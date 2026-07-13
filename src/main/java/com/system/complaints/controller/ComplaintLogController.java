@@ -4,12 +4,14 @@ import com.system.complaints.dto.BulkVisitScheduleRequest;
 import com.system.complaints.dto.BulkVisitScheduleRequest.Entry;
 import com.system.complaints.dto.BulkVisitScheduleResult;
 import com.system.complaints.dto.ComplaintBranchGroupDTO;
+import com.system.complaints.dto.ExcelReportRequest;
 import com.system.complaints.model.ComplaintLog;
 import com.system.complaints.model.PendingForClosedLog;
 import com.system.complaints.model.RemarksUpdate;
 import com.system.complaints.repository.PendingForClosedLogRepository;
 import com.system.complaints.service.BulkVisitSchedulingService;
 import com.system.complaints.service.ComplaintLogService;
+import com.system.complaints.service.ExcelReportService;
 import com.system.complaints.service.RemarksUpdateService;
 import com.system.complaints.service.GoogleDriveService;
 import jakarta.validation.Valid;
@@ -20,12 +22,15 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -60,6 +65,9 @@ public class ComplaintLogController {
 
     @Autowired
     private GoogleDriveService googleDriveService;
+
+    @Autowired
+    private ExcelReportService excelReportService;
     
     /**
      * Upload a job card for a specific complaint.
@@ -340,6 +348,17 @@ public class ComplaintLogController {
         }
     }
 
+    @PostMapping("/reports/excel")
+    public ResponseEntity<StreamingResponseBody> generateExcelReport(@RequestBody ExcelReportRequest request) {
+        String fileName = excelReportService.buildFileName(request);
+        StreamingResponseBody stream = outputStream -> excelReportService.writeComplaintReport(request, outputStream);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(stream);
+    }
+
     @GetMapping("/complaints-summary")
     public ResponseEntity<Map<String, Object>> getComplaintDashboardSummary() {
         return ResponseEntity.ok(complaintLogService.getComplaintDashboardSummary());
@@ -469,6 +488,8 @@ public class ComplaintLogController {
                             pendingForClosedDateFrom, pendingForClosedDateTo,
                             date, approvedDate, closedDate, pendingForClosedDate, quotationDate,
                             priority, inPool, hasReport, reportType, pageable);
+
+            complaintLogService.attachAssignedVisitorNames(resultPage);
 
             long complaintsBeforePage = 0L;
             RequestAttributes ra = RequestContextHolder.getRequestAttributes();
@@ -775,3 +796,4 @@ public class ComplaintLogController {
 
 
 }
+

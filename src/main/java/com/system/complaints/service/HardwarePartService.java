@@ -54,8 +54,6 @@ public class HardwarePartService {
         HardwarePart part = hardwarePartRepository.findById(partId)
                 .orElseThrow(() -> new RuntimeException("HardwarePart not found with id: " + partId));
 
-        String oldEngineer = part.getAssignedEngineer();
-
         part.setHardwareName(updatedPart.getHardwareName());
         part.setAvailableWithEngineer(updatedPart.getAvailableWithEngineer());
         part.setRepaired(updatedPart.getRepaired());
@@ -84,14 +82,6 @@ public class HardwarePartService {
         }
 
         HardwarePart savedPart = hardwarePartRepository.save(part);
-
-        // Example: Simple engineer change log (optional)
-        if ((oldEngineer == null && part.getAssignedEngineer() != null) ||
-                (oldEngineer != null && !oldEngineer.equals(part.getAssignedEngineer()))) {
-            System.out.println("Assigned engineer changed for hardware part [id=" + part.getId()
-                    + "]: from '" + oldEngineer + "' to '" + part.getAssignedEngineer() + "'");
-            // You can replace this with your own logging mechanism or service call
-        }
 
         return savedPart;
     }

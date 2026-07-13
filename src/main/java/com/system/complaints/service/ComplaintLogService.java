@@ -121,7 +121,6 @@
 
             // If no authentication or not authenticated, return "anonymousUser" (or handle as needed)
             if (authentication == null || !authentication.isAuthenticated()) {
-                System.out.println("No valid authentication found. User is anonymous.");
                 return "anonymousUser";
             }
 
@@ -404,6 +403,37 @@
             return result;
         }
 
+        public void attachAssignedVisitorNames(Page<ComplaintBranchGroupDTO> groups) {
+            if (groups == null || groups.isEmpty()) {
+                return;
+            }
+
+            List<ComplaintLog> complaints = groups.getContent().stream()
+                    .filter(Objects::nonNull)
+                    .flatMap(group -> Optional.ofNullable(group.getComplaints()).orElse(List.of()).stream())
+                    .filter(Objects::nonNull)
+                    .toList();
+
+            if (complaints.isEmpty()) {
+                return;
+            }
+
+            List<String> complaintIds = complaints.stream()
+                    .map(ComplaintLog::getComplaintId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList();
+
+            Map<String, String> assignedVisitors = getAssignedVisitorNamesByComplaintIds(complaintIds);
+            complaints.forEach(complaint -> {
+                String historyNames = assignedVisitors.get(complaint.getComplaintId());
+                complaint.setAllVisitorNames(
+                        historyNames != null && !historyNames.isBlank()
+                                ? historyNames
+                                : complaint.getVisitorName()
+                );
+            });
+        }
         /**
          * Retrieve a ComplaintLog by ID.
          */
@@ -1970,6 +2000,7 @@
                         if (latestLog != null) {
                             cl.setCourierStatus(latestLog.getCourierStatus());
                             cl.setEquipmentDescription(latestLog.getEquipmentDescription());
+                            cl.setHardwareReceivedOutwardDate(latestLog.getReceivedOutwardDate());
                         }
                     }
                 }
@@ -2290,6 +2321,7 @@
                         if (latestLog != null) {
                             cl.setCourierStatus(latestLog.getCourierStatus());
                             cl.setEquipmentDescription(latestLog.getEquipmentDescription());
+                            cl.setHardwareReceivedOutwardDate(latestLog.getReceivedOutwardDate());
                         }
                     }
                 }
@@ -2370,3 +2402,4 @@
 
 
     }
+

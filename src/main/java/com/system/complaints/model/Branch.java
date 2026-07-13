@@ -22,6 +22,9 @@ public class Branch {
     @Column(name = "city", nullable = false)
     private String city;
 
+    @Column(name = "region")
+    private String region;
+
     // Getters and Setters
 
     public Long getId() {
@@ -62,5 +65,13 @@ public class Branch {
 
     public void setCity(String city) {
         this.city = city;
+    }
+
+    public String getRegion() {
+        return region;
+    }
+
+    public void setRegion(String region) {
+        this.region = region;
     }
 }
