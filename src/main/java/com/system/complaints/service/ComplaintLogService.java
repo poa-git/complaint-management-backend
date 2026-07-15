@@ -8,6 +8,7 @@
     import jakarta.annotation.PostConstruct;
     import jakarta.persistence.EntityManager;
     import jakarta.persistence.PersistenceContext;
+    import jakarta.persistence.Tuple;
     import jakarta.persistence.TypedQuery;
     import jakarta.persistence.criteria.*;
     import org.springframework.beans.factory.annotation.Autowired;
@@ -522,40 +523,18 @@
                     return false;
                 }
 
-                // --- Save old values for history BEFORE making changes ---
                 Long oldVisitorId = complaint.getVisitorId();
                 String oldVisitorName = complaint.getVisitorName();
-                String oldStatus = complaint.getComplaintStatus();
-                Date oldScheduleDate = complaint.getScheduleDate();
-                Boolean oldMarkedInPool = complaint.getMarkedInPool();
 
-                // Fetch visitor name from the visitor service
                 String visitorName = visitorService.findVisitorNameById(visitorId);
                 if (visitorName == null) {
-                    return false; // Return false or handle as needed if no visitor is found.
+                    return false;
                 }
 
-                // Assign visitor details
                 complaint.setVisitorId(visitorId);
                 complaint.setVisitorName(visitorName);
-
-                // Update complaint status to "Visit Schedule"
-                complaint.setComplaintStatus("Visit Schedule");
-
-                // Set scheduleDate to the current date
-                Date today = Date.valueOf(LocalDate.now());
-                complaint.setScheduleDate(today);
-
-                // Log the schedule visit
-                scheduleService.logSchedule(complaint.getComplaintId(), today, getLoggedInUsername());
-
-                // Marked in pool should be false now
-                complaint.setMarkedInPool(false);
-
-                // Save updated complaint details
                 complaintLogRepository.save(complaint);
 
-                // --- Save history for each field changed ---
                 saveComplaintHistory(
                         complaint.getComplaintId(),
                         "visitorId",
@@ -570,29 +549,6 @@
                         visitorName,
                         "Assigned to visitor"
                 );
-                saveComplaintHistory(
-                        complaint.getComplaintId(),
-                        "complaintStatus",
-                        oldStatus,
-                        "Visit Schedule",
-                        "Assigned to visitor"
-                );
-                saveComplaintHistory(
-                        complaint.getComplaintId(),
-                        "scheduleDate",
-                        oldScheduleDate != null ? oldScheduleDate.toString() : null,
-                        today.toString(),
-                        "Visit scheduled"
-                );
-                if (Boolean.TRUE.equals(oldMarkedInPool)) {
-                    saveComplaintHistory(
-                            complaint.getComplaintId(),
-                            "isMarkedInPool",
-                            "true",
-                            "false",
-                            "Assigned to visitor"
-                    );
-                }
 
                 return true;
             }
@@ -1978,109 +1934,7 @@
                 } catch (Exception e) {}
             }
 
-            // --- Fetch all filtered complaints ---
-            List<ComplaintLog> allComplaints = complaintLogRepository.findAll(spec);
-
-            // --- Set courierStatus/equipmentDescription efficiently (batch) ---
-            List<Long> complaintIds = allComplaints.stream()
-                    .map(ComplaintLog::getId)
-                    .collect(Collectors.toList());
-
-            if (!complaintIds.isEmpty()) {
-                List<HardwareLog> allLogs = hardwareLogRepository.findByComplaintLogIdIn(complaintIds);
-                Map<Long, List<HardwareLog>> logsByComplaintId = allLogs.stream()
-                        .collect(Collectors.groupingBy(log -> log.getComplaintLog().getId()));
-
-                for (ComplaintLog cl : allComplaints) {
-                    List<HardwareLog> logs = logsByComplaintId.get(cl.getId());
-                    if (logs != null && !logs.isEmpty()) {
-                        HardwareLog latestLog = logs.stream()
-                                .max(Comparator.comparing(HardwareLog::getId))
-                                .orElse(null);
-                        if (latestLog != null) {
-                            cl.setCourierStatus(latestLog.getCourierStatus());
-                            cl.setEquipmentDescription(latestLog.getEquipmentDescription());
-                            cl.setHardwareReceivedOutwardDate(latestLog.getReceivedOutwardDate());
-                        }
-                    }
-                }
-            }
-
-            // --- Group by bankName + branchCode (case-insensitive, trimmed) ---
-            Map<String, List<ComplaintLog>> grouped = allComplaints.stream()
-                    .collect(Collectors.groupingBy(c ->
-                            (c.getBankName() == null ? "" : c.getBankName().trim().toLowerCase()) + "__" +
-                                    (c.getBranchCode() == null ? "" : c.getBranchCode().trim().toLowerCase())
-                    ));
-
-            // --- Convert groups to DTOs (one DTO per branch) ---
-            List<ComplaintBranchGroupDTO> branchGroups = new ArrayList<>();
-            for (List<ComplaintLog> group : grouped.values()) {
-                if (!group.isEmpty()) {
-                    // ✅ Sort complaints in this group by latest date (and id as tiebreaker)
-                    group.sort((c1, c2) -> {
-                        if (c1.getDate() == null && c2.getDate() == null) return 0;
-                        if (c1.getDate() == null) return 1;
-                        if (c2.getDate() == null) return -1;
-                        int dateCompare = c2.getDate().compareTo(c1.getDate()); // descending
-                        if (dateCompare != 0) return dateCompare;
-                        return Long.compare(c2.getId(), c1.getId()); // tie-breaker
-                    });
-
-                    ComplaintLog first = group.get(0);
-                    branchGroups.add(new ComplaintBranchGroupDTO(
-                            first.getBankName(),
-                            first.getBranchCode(),
-                            first.getBranchName(),
-                            group
-                    ));
-                }
-            }
-
-
-            // --- Sort branch groups by the latest complaint (already first in each group) ---
-            branchGroups.sort((a, b) -> {
-                ComplaintLog latestA = a.getComplaints().isEmpty() ? null : a.getComplaints().get(0);
-                ComplaintLog latestB = b.getComplaints().isEmpty() ? null : b.getComplaints().get(0);
-
-                if (latestA == null && latestB == null) return 0;
-                if (latestA == null) return 1;
-                if (latestB == null) return -1;
-
-                // Compare by date desc, then id desc as tie-breaker
-                int dateCompare = latestB.getDate().compareTo(latestA.getDate());
-                if (dateCompare != 0) return dateCompare;
-                return Long.compare(latestB.getId(), latestA.getId());
-            });
-
-
-            // --- Paging by branch group ---
-            int start = (int) pageable.getOffset();
-            int end = Math.min(start + pageable.getPageSize(), branchGroups.size());
-            List<ComplaintBranchGroupDTO> pageGroups = (start > end) ? new ArrayList<>() : branchGroups.subList(start, end);
-
-// --- Total complaints count (across all groups) ---
-            long totalComplaints = branchGroups.stream()
-                    .mapToLong(group -> group.getComplaints().size())
-                    .sum();
-
-// --- Complaints count before this page (for serial offset) ---
-            int safeStart = Math.min(start, branchGroups.size()); // guard against OOB
-            long complaintsBeforePage = 0L;
-            for (int i = 0; i < safeStart; i++) {
-                List<ComplaintLog> gc = branchGroups.get(i).getComplaints();
-                if (gc != null) complaintsBeforePage += gc.size();
-            }
-
-// Stash values on current request so the controller can put them in headers
-            RequestAttributes ra = RequestContextHolder.getRequestAttributes();
-            if (ra != null) {
-                ra.setAttribute("complaintsBeforePage", complaintsBeforePage, RequestAttributes.SCOPE_REQUEST);
-                ra.setAttribute("totalGroups", branchGroups.size(), RequestAttributes.SCOPE_REQUEST); // optional
-            }
-
-// Keep pagination BY GROUPS; totalElements = TOTAL COMPLAINTS (your requirement)
-            return new PageImpl<>(pageGroups, pageable, totalComplaints);
+            return paginateBranchGroups(spec, pageable, false);
 
         }
 
@@ -2296,53 +2150,55 @@
                 } catch (Exception e) {}
             }
 
-            // -------------- BRANCH GROUP PAGING LOGIC --------------
+            return paginateBranchGroups(spec, pageable, true);
 
-            // 1. Fetch all filtered complaints (no paging yet)
-            List<ComplaintLog> allComplaints = complaintLogRepository.findAll(spec);
+        }
 
-// ======== Set courierStatus and equipmentDescription efficiently ========
-            List<Long> complaintIds = allComplaints.stream()
-                    .map(ComplaintLog::getId)
-                    .collect(Collectors.toList());
 
-            if (!complaintIds.isEmpty()) {
-                List<HardwareLog> allLogs = hardwareLogRepository.findByComplaintLogIdIn(complaintIds);
 
-                Map<Long, List<HardwareLog>> logsByComplaintId = allLogs.stream()
-                        .collect(Collectors.groupingBy(log -> log.getComplaintLog().getId()));
-
-                for (ComplaintLog cl : allComplaints) {
-                    List<HardwareLog> logs = logsByComplaintId.get(cl.getId());
-                    if (logs != null && !logs.isEmpty()) {
-                        HardwareLog latestLog = logs.stream()
-                                .max(Comparator.comparing(HardwareLog::getId))
-                                .orElse(null);
-                        if (latestLog != null) {
-                            cl.setCourierStatus(latestLog.getCourierStatus());
-                            cl.setEquipmentDescription(latestLog.getEquipmentDescription());
-                            cl.setHardwareReceivedOutwardDate(latestLog.getReceivedOutwardDate());
-                        }
-                    }
-                }
+        private Page<ComplaintBranchGroupDTO> paginateBranchGroups(
+                Specification<ComplaintLog> spec,
+                Pageable pageable,
+                boolean excludeWaitOnlyGroups
+        ) {
+            if (excludeWaitOnlyGroups) {
+                return paginateOpenGroupsPreservingLegacyOrder(spec, pageable);
             }
 
-            // 2. Group by bankName + branchCode
-            Map<String, List<ComplaintLog>> grouped = allComplaints.stream()
-                    .collect(Collectors.groupingBy(c ->
-                            (c.getBankName() == null ? "" : c.getBankName().trim().toLowerCase()) + "__" +
-                                    (c.getBranchCode() == null ? "" : c.getBranchCode().trim().toLowerCase())
-                    ));
+            int start = Math.toIntExact(pageable.getOffset());
+            int requestedGroupCount = Math.addExact(start, pageable.getPageSize());
+            List<BranchGroupSummary> summaries = loadBranchGroupSummaries(spec, requestedGroupCount, false);
+            long totalGroups = countBranchGroups(spec);
+            long totalComplaints = complaintLogRepository.count(spec);
 
-            // 3. Only include groups where not all are "Wait For Approval"
+            int pageEnd = Math.min(requestedGroupCount, summaries.size());
+            List<BranchGroupSummary> pageSummaries = start >= pageEnd
+                    ? List.of()
+                    : summaries.subList(start, pageEnd);
+            long complaintsBeforePage = summaries.stream()
+                    .limit(Math.min(start, summaries.size()))
+                    .mapToLong(BranchGroupSummary::complaintCount)
+                    .sum();
+
+            List<ComplaintBranchGroupDTO> pageGroups = loadBranchGroups(spec, pageSummaries);
+            setPaginationRequestAttributes(complaintsBeforePage, totalComplaints, totalGroups);
+            return new PageImpl<>(pageGroups, pageable, totalGroups);
+        }
+
+        private Page<ComplaintBranchGroupDTO> paginateOpenGroupsPreservingLegacyOrder(
+                Specification<ComplaintLog> spec,
+                Pageable pageable
+        ) {
+            List<ComplaintLog> openComplaints = complaintLogRepository.findAll(spec);
+            Map<String, List<ComplaintLog>> grouped = openComplaints.stream()
+                    .collect(Collectors.groupingBy(complaint ->
+                            branchKey(complaint.getBankName(), complaint.getBranchCode())));
+
             List<ComplaintBranchGroupDTO> branchGroups = new ArrayList<>();
             for (List<ComplaintLog> group : grouped.values()) {
-                boolean allWait = group.stream()
-                        .allMatch(c -> {
-                            String statusVal = c.getComplaintStatus() == null ? "" : c.getComplaintStatus().trim().toLowerCase();
-                            return statusVal.equals("wait for approval");
-                        });
-                if (!allWait) {
+                boolean allWaitForApproval = group.stream().allMatch(complaint ->
+                        "wait for approval".equals(normalizeText(complaint.getComplaintStatus())));
+                if (!allWaitForApproval && !group.isEmpty()) {
                     ComplaintLog first = group.get(0);
                     branchGroups.add(new ComplaintBranchGroupDTO(
                             first.getBankName(),
@@ -2353,45 +2209,207 @@
                 }
             }
 
-            // 4. Sort groups by latest complaint date DESC
-            branchGroups.sort((a, b) -> {
-                Date aDate = a.getComplaints().stream()
-                        .map(ComplaintLog::getDate)
-                        .filter(Objects::nonNull)
-                        .max(Date::compareTo).orElse(null);
-                Date bDate = b.getComplaints().stream()
-                        .map(ComplaintLog::getDate)
-                        .filter(Objects::nonNull)
-                        .max(Date::compareTo).orElse(null);
-                if (aDate == null && bDate == null) return 0;
-                if (aDate == null) return 1;
-                if (bDate == null) return -1;
-                return aDate.compareTo(bDate); // DESC
+            // Preserve the previous Open-tab comparator, including its oldest-date-first order.
+            branchGroups.sort((first, second) -> {
+                Date firstDate = latestComplaintDate(first.getComplaints());
+                Date secondDate = latestComplaintDate(second.getComplaints());
+                if (firstDate == null && secondDate == null) return 0;
+                if (firstDate == null) return 1;
+                if (secondDate == null) return -1;
+                return firstDate.compareTo(secondDate);
             });
 
-            // 5. Paging the branch groups (not complaints)
-            int start = (int) pageable.getOffset();
-            int end = Math.min(start + pageable.getPageSize(), branchGroups.size());
-            List<ComplaintBranchGroupDTO> pageGroups = (start > end) ? new ArrayList<>() : branchGroups.subList(start, end);
+            int start = Math.toIntExact(pageable.getOffset());
+            int end = Math.min(Math.addExact(start, pageable.getPageSize()), branchGroups.size());
+            List<ComplaintBranchGroupDTO> pageGroups = start >= end
+                    ? List.of()
+                    : new ArrayList<>(branchGroups.subList(start, end));
+            List<ComplaintLog> pageComplaints = pageGroups.stream()
+                    .flatMap(group -> group.getComplaints().stream())
+                    .toList();
+            attachLatestHardwareDetails(pageComplaints);
 
-// --- Calculate how many complaints are before this page ---
             long complaintsBeforePage = branchGroups.stream()
-                    .limit(start) // all groups before this page
-                    .mapToLong(g -> g.getComplaints().size())
+                    .limit(Math.min(start, branchGroups.size()))
+                    .mapToLong(group -> group.getComplaints().size())
                     .sum();
-
-// Store this in request attributes so controller can send it as header
-            RequestAttributes ra = RequestContextHolder.getRequestAttributes();
-            if (ra != null) {
-                ra.setAttribute("complaintsBeforePage", complaintsBeforePage, RequestAttributes.SCOPE_REQUEST);
-            }
-
-// 6. Return as Page of groups
+            long totalComplaints = branchGroups.stream()
+                    .mapToLong(group -> group.getComplaints().size())
+                    .sum();
+            setPaginationRequestAttributes(complaintsBeforePage, totalComplaints, branchGroups.size());
             return new PageImpl<>(pageGroups, pageable, branchGroups.size());
-
         }
 
+        private Date latestComplaintDate(List<ComplaintLog> complaints) {
+            return complaints.stream()
+                    .map(ComplaintLog::getDate)
+                    .filter(Objects::nonNull)
+                    .max(Date::compareTo)
+                    .orElse(null);
+        }
 
+        private List<BranchGroupSummary> loadBranchGroupSummaries(
+                Specification<ComplaintLog> spec,
+                int maxResults,
+                boolean excludeWaitOnlyGroups
+        ) {
+            CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+            CriteriaQuery<Tuple> query = cb.createTupleQuery();
+            Root<ComplaintLog> root = query.from(ComplaintLog.class);
+            Expression<String> bank = normalizedText(cb, root.get("bankName"));
+            Expression<String> branch = normalizedText(cb, root.get("branchCode"));
+            Expression<Long> complaintCount = cb.count(root.get("id"));
+            Expression<Date> latestDate = cb.greatest(root.<Date>get("date"));
+            Expression<Long> latestId = cb.max(root.<Long>get("id"));
+
+            query.multiselect(bank, branch, complaintCount, latestDate, latestId)
+                    .groupBy(bank, branch)
+                    .orderBy(cb.desc(latestDate), cb.desc(latestId));
+
+            Predicate predicate = spec.toPredicate(root, query, cb);
+            if (predicate != null) {
+                query.where(predicate);
+            }
+            if (excludeWaitOnlyGroups) {
+                Expression<Integer> nonWaitCount = cb.sum(
+                        cb.<Integer>selectCase()
+                                .when(cb.equal(normalizedText(cb, root.get("complaintStatus")), "wait for approval"), 0)
+                                .otherwise(1)
+                );
+                query.having(cb.greaterThan(nonWaitCount, 0));
+            }
+
+            TypedQuery<Tuple> typedQuery = entityManager.createQuery(query);
+            if (maxResults > 0) {
+                typedQuery.setMaxResults(maxResults);
+            }
+            return typedQuery.getResultList().stream()
+                    .map(tuple -> new BranchGroupSummary(
+                            tuple.get(0, String.class),
+                            tuple.get(1, String.class),
+                            tuple.get(2, Long.class)
+                    ))
+                    .toList();
+        }
+
+        private long countBranchGroups(Specification<ComplaintLog> spec) {
+            CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+            CriteriaQuery<Long> query = cb.createQuery(Long.class);
+            Root<ComplaintLog> root = query.from(ComplaintLog.class);
+            Expression<String> groupKey = cb.concat(
+                    cb.concat(normalizedText(cb, root.get("bankName")), "\u001F"),
+                    normalizedText(cb, root.get("branchCode"))
+            );
+            query.select(cb.countDistinct(groupKey));
+            Predicate predicate = spec.toPredicate(root, query, cb);
+            if (predicate != null) {
+                query.where(predicate);
+            }
+            return entityManager.createQuery(query).getSingleResult();
+        }
+
+        private List<ComplaintBranchGroupDTO> loadBranchGroups(
+                Specification<ComplaintLog> spec,
+                List<BranchGroupSummary> summaries
+        ) {
+            if (summaries.isEmpty()) {
+                return List.of();
+            }
+
+            Specification<ComplaintLog> pageSpec = spec.and((root, query, cb) -> {
+                Expression<String> bank = normalizedText(cb, root.get("bankName"));
+                Expression<String> branch = normalizedText(cb, root.get("branchCode"));
+                return cb.or(summaries.stream()
+                        .map(summary -> cb.and(
+                                cb.equal(bank, summary.bankName()),
+                                cb.equal(branch, summary.branchCode())
+                        ))
+                        .toArray(Predicate[]::new));
+            });
+
+            List<ComplaintLog> complaints = complaintLogRepository.findAll(
+                    pageSpec,
+                    org.springframework.data.domain.Sort.by(
+                            org.springframework.data.domain.Sort.Order.desc("date"),
+                            org.springframework.data.domain.Sort.Order.desc("id")
+                    )
+            );
+            attachLatestHardwareDetails(complaints);
+
+            Map<String, List<ComplaintLog>> complaintsByBranch = complaints.stream()
+                    .collect(Collectors.groupingBy(
+                            complaint -> branchKey(complaint.getBankName(), complaint.getBranchCode()),
+                            LinkedHashMap::new,
+                            Collectors.toList()
+                    ));
+
+            List<ComplaintBranchGroupDTO> groups = new ArrayList<>(summaries.size());
+            for (BranchGroupSummary summary : summaries) {
+                List<ComplaintLog> groupComplaints = complaintsByBranch.getOrDefault(summary.key(), List.of());
+                if (!groupComplaints.isEmpty()) {
+                    ComplaintLog first = groupComplaints.get(0);
+                    groups.add(new ComplaintBranchGroupDTO(
+                            first.getBankName(),
+                            first.getBranchCode(),
+                            first.getBranchName(),
+                            groupComplaints
+                    ));
+                }
+            }
+            return groups;
+        }
+
+        private void attachLatestHardwareDetails(List<ComplaintLog> complaints) {
+            if (complaints.isEmpty()) {
+                return;
+            }
+            List<Long> complaintIds = complaints.stream().map(ComplaintLog::getId).toList();
+            Map<Long, HardwareLog> latestLogs = new HashMap<>();
+            for (HardwareLog log : hardwareLogRepository.findByComplaintLogIdIn(complaintIds)) {
+                Long complaintId = log.getComplaintLog().getId();
+                latestLogs.merge(complaintId, log, (current, candidate) ->
+                        candidate.getId() > current.getId() ? candidate : current);
+            }
+            for (ComplaintLog complaint : complaints) {
+                HardwareLog latestLog = latestLogs.get(complaint.getId());
+                if (latestLog != null) {
+                    complaint.setCourierStatus(latestLog.getCourierStatus());
+                    complaint.setEquipmentDescription(latestLog.getEquipmentDescription());
+                    complaint.setHardwareReceivedOutwardDate(latestLog.getReceivedOutwardDate());
+                }
+            }
+        }
+
+        private Expression<String> normalizedText(CriteriaBuilder cb, Expression<String> expression) {
+            return cb.lower(cb.trim(cb.coalesce(expression, "")));
+        }
+
+        private String branchKey(String bankName, String branchCode) {
+            return normalizeText(bankName) + "\u001F" + normalizeText(branchCode);
+        }
+
+        private String normalizeText(String value) {
+            return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        }
+
+        private void setPaginationRequestAttributes(
+                long complaintsBeforePage,
+                long totalComplaints,
+                long totalGroups
+        ) {
+            RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+            if (attributes != null) {
+                attributes.setAttribute("complaintsBeforePage", complaintsBeforePage, RequestAttributes.SCOPE_REQUEST);
+                attributes.setAttribute("totalComplaints", totalComplaints, RequestAttributes.SCOPE_REQUEST);
+                attributes.setAttribute("totalGroups", totalGroups, RequestAttributes.SCOPE_REQUEST);
+            }
+        }
+
+        private record BranchGroupSummary(String bankName, String branchCode, long complaintCount) {
+            private String key() {
+                return bankName + "\u001F" + branchCode;
+            }
+        }
 
         public boolean existsOpenComplaint(String bankName, String branchCode) {
             return complaintLogRepository.existsByBankNameIgnoreCaseAndBranchCodeAndComplaintStatusNot(

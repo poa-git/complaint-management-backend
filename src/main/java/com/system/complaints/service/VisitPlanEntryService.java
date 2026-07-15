@@ -131,6 +131,18 @@ public class VisitPlanEntryService {
         return plan == null ? null : response(plan);
     }
 
+    @Transactional(readOnly = true)
+    public List<VisitPlanWorkflowResponse> getMyEditablePlans() {
+        return planRepository
+                .findByCreatedByAndStatusNotOrderByScheduleDateAscIdAsc(
+                        currentUsername(),
+                        "APPROVED"
+                )
+                .stream()
+                .map(this::response)
+                .toList();
+    }
+
     @Transactional
     public VisitPlanWorkflowResponse removeItem(Long planId, Long entryId) {
         VisitPlan plan = requireEditableOwnedPlan(planId);

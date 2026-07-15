@@ -157,7 +157,7 @@ public class VisitPlanWorkflowService {
                         "Complaint not found: " + entry.getComplaintId()
                 ));
         String status = safe(complaint.getComplaintStatus()).toLowerCase();
-        if (List.of("closed", "pending for closed", "visit schedule").contains(status)) {
+        if (List.of("closed", "pending for closed").contains(status)) {
             throw new IllegalArgumentException(
                     entry.getComplaintId() + " is no longer eligible for visit scheduling."
             );

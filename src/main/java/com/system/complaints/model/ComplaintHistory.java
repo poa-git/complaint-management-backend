@@ -6,7 +6,13 @@ import org.hibernate.annotations.Type;
 import java.sql.Timestamp;
 
 @Entity
-@Table(name = "complaint_history")
+@Table(
+        name = "complaint_history",
+        indexes = @Index(
+                name = "idx_history_complaint_field_date",
+                columnList = "complaint_id,field_name,change_date"
+        )
+)
 public class ComplaintHistory {
 
     @Id

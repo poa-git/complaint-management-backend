@@ -8,7 +8,10 @@ import java.util.HashSet;
 import java.util.Set;
 
 @Entity
-@Table(name = "hardware_log")
+@Table(
+        name = "hardware_log",
+        indexes = @Index(name = "idx_hardware_complaint_id", columnList = "complaint_id,id")
+)
 public class HardwareLog {
 
     @Id

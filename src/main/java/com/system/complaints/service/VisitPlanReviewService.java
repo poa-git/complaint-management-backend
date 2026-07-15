@@ -35,7 +35,7 @@ public class VisitPlanReviewService {
     private static final int DEFAULT_LIMIT = 5000;
     private static final int MAX_LIMIT = 10000;
 
-    private static final List<String> ELIGIBLE_STATUS_LABELS = List.of("Open", "Delivered");
+    private static final List<String> ELIGIBLE_STATUS_LABELS = List.of("Open", "Delivered", "Visit Schedule");
     private static final List<String> OPEN_FAMILY_STATUS_LABELS = List.of(
             "Open",
             "FOC",
@@ -314,6 +314,7 @@ public class VisitPlanReviewService {
         dto.setBranchName(complaint.getBranchName());
         dto.setCity(complaint.getCity());
         dto.setComplaintStatus(complaint.getComplaintStatus());
+        dto.setScheduleDate(complaint.getScheduleDate());
         dto.setCourierStatus(courierStatus);
         dto.setVisitorId(complaint.getVisitorId());
         dto.setVisitorName(complaint.getVisitorName());
@@ -418,7 +419,14 @@ public class VisitPlanReviewService {
         String complaintStatus = normalize(complaint.getComplaintStatus());
         String normalizedCourierStatus = normalize(courierStatus);
 
-        return ELIGIBLE_COMPLAINT_STATUSES.contains(complaintStatus)
+        boolean eligibleStatus = ELIGIBLE_COMPLAINT_STATUSES.contains(complaintStatus);
+        if ("visit schedule".equals(complaintStatus)) {
+            Date scheduleDate = complaint.getScheduleDate();
+            eligibleStatus = scheduleDate != null
+                    && !scheduleDate.toLocalDate().isBefore(LocalDate.now());
+        }
+
+        return eligibleStatus
                 && !EXCLUDED_COURIER_STATUSES.contains(normalizedCourierStatus);
     }
 

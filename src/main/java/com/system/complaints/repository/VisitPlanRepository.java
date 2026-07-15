@@ -13,6 +13,7 @@ import java.util.List;
 
 public interface VisitPlanRepository extends JpaRepository<VisitPlan, Long> {
     List<VisitPlan> findByCreatedByAndScheduleDateOrderByIdDesc(String createdBy, Date scheduleDate);
+    List<VisitPlan> findByCreatedByAndStatusNotOrderByScheduleDateAscIdAsc(String createdBy, String status);
     List<VisitPlan> findByStatusOrderBySubmittedAtAsc(String status);
     long countByStatus(String status);
     List<VisitPlan> findByScheduleDateBetweenOrderByScheduleDateAscIdAsc(Date from, Date to);

@@ -5,6 +5,7 @@ import com.system.complaints.model.HardwareLog;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Date;
@@ -72,7 +73,8 @@ WHERE hl.complaintLog IN :complaints
 """)
     List<HardwareLog> findAllWithPartsAndReportsAssignedTo(String username);
 
-    List<HardwareLog> findByComplaintLogIdIn(List<Long> complaintLogIds);
+    @Query("SELECT hl FROM HardwareLog hl JOIN FETCH hl.complaintLog cl WHERE cl.id IN :complaintLogIds")
+    List<HardwareLog> findByComplaintLogIdIn(@Param("complaintLogIds") List<Long> complaintLogIds);
 
     @Query("""
     SELECT 

@@ -14,6 +14,7 @@ public class VisitPlanComplaintDTO {
     private String branchName;
     private String city;
     private String complaintStatus;
+    private Date scheduleDate;
     private String courierStatus;
     private Long visitorId;
     private String visitorName;
@@ -109,6 +110,14 @@ public class VisitPlanComplaintDTO {
 
     public void setComplaintStatus(String complaintStatus) {
         this.complaintStatus = complaintStatus;
+    }
+
+    public Date getScheduleDate() {
+        return scheduleDate;
+    }
+
+    public void setScheduleDate(Date scheduleDate) {
+        this.scheduleDate = scheduleDate;
     }
 
     public String getCourierStatus() {

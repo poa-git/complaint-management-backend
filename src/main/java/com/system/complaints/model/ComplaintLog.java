@@ -12,7 +12,13 @@ import java.util.List;
 import java.util.HashSet;
 import java.util.Set;
 @Entity
-@Table(name = "complaints_log")
+@Table(
+        name = "complaints_log",
+        indexes = {
+                @Index(name = "idx_complaints_status_date", columnList = "complaint_status,date,id"),
+                @Index(name = "idx_complaints_branch", columnList = "bank_name,branch_code")
+        }
+)
 public class ComplaintLog {
 
     @Id

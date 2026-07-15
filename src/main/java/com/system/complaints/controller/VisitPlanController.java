@@ -82,6 +82,11 @@ public class VisitPlanController {
         );
     }
 
+    @GetMapping("/plans/mine/editable")
+    public ResponseEntity<java.util.List<VisitPlanWorkflowResponse>> getMyEditablePlans() {
+        return ResponseEntity.ok(visitPlanEntryService.getMyEditablePlans());
+    }
+
     @DeleteMapping("/plans/{planId}/items/{entryId}")
     public ResponseEntity<VisitPlanWorkflowResponse> removePlanItem(
             @PathVariable Long planId,

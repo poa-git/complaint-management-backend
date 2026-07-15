@@ -492,17 +492,33 @@ public class ComplaintLogController {
             complaintLogService.attachAssignedVisitorNames(resultPage);
 
             long complaintsBeforePage = 0L;
+            long totalComplaints = resultPage.getTotalElements();
             RequestAttributes ra = RequestContextHolder.getRequestAttributes();
             if (ra != null) {
                 Object attr = ra.getAttribute("complaintsBeforePage", RequestAttributes.SCOPE_REQUEST);
                 if (attr instanceof Long l) complaintsBeforePage = l;
                 else if (attr instanceof Integer i) complaintsBeforePage = i.longValue();
+
+                Object totalAttr = ra.getAttribute("totalComplaints", RequestAttributes.SCOPE_REQUEST);
+                if (totalAttr instanceof Long l) totalComplaints = l;
+                else if (totalAttr instanceof Integer i) totalComplaints = i.longValue();
             }
+
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("content", resultPage.getContent());
+            response.put("totalElements", totalComplaints);
+            response.put("totalPages", resultPage.getTotalPages());
+            response.put("number", resultPage.getNumber());
+            response.put("size", resultPage.getSize());
+            response.put("numberOfElements", resultPage.getNumberOfElements());
+            response.put("first", resultPage.isFirst());
+            response.put("last", resultPage.isLast());
+            response.put("empty", resultPage.isEmpty());
 
             return ResponseEntity.ok()
                     .header("X-Complaints-Before-Page", String.valueOf(complaintsBeforePage))
                     .header("Access-Control-Expose-Headers", "X-Complaints-Before-Page")
-                    .body(resultPage);
+                    .body(response);
 
         } catch (Exception e) {
             e.printStackTrace();
