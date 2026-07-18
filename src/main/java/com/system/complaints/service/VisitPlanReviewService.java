@@ -35,7 +35,12 @@ public class VisitPlanReviewService {
     private static final int DEFAULT_LIMIT = 5000;
     private static final int MAX_LIMIT = 10000;
 
-    private static final List<String> ELIGIBLE_STATUS_LABELS = List.of("Open", "Delivered", "Visit Schedule");
+    private static final List<String> ELIGIBLE_STATUS_LABELS = List.of(
+            "Open",
+            "Approved",
+            "Delivered",
+            "Visit Schedule"
+    );
     private static final List<String> OPEN_FAMILY_STATUS_LABELS = List.of(
             "Open",
             "FOC",
@@ -45,9 +50,14 @@ public class VisitPlanReviewService {
             "Hardware Picked",
             "Visit On Hold",
             "Dispatched",
+            "Approved",
             "Delivered"
     );
-    private static final Set<String> ELIGIBLE_COMPLAINT_STATUSES = Set.of("open", "delivered");
+    private static final Set<String> ELIGIBLE_COMPLAINT_STATUSES = Set.of(
+            "open",
+            "approved",
+            "delivered"
+    );
 
     private static final Set<String> EXCLUDED_COURIER_STATUSES = Set.of(
             "received inward",
@@ -426,8 +436,12 @@ public class VisitPlanReviewService {
                     && !scheduleDate.toLocalDate().isBefore(LocalDate.now());
         }
 
-        return eligibleStatus
-                && !EXCLUDED_COURIER_STATUSES.contains(normalizedCourierStatus);
+        if (!eligibleStatus) {
+            return false;
+        }
+
+        return "approved".equals(complaintStatus)
+                || !EXCLUDED_COURIER_STATUSES.contains(normalizedCourierStatus);
     }
 
     private boolean hasVisitor(ComplaintLog complaint) {

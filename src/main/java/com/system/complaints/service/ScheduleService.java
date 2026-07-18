@@ -5,6 +5,7 @@ import com.system.complaints.model.ComplaintLog;
 import com.system.complaints.model.Schedule;
 import com.system.complaints.repository.ComplaintLogRepository;
 import com.system.complaints.repository.ScheduleRepository;
+import com.system.complaints.repository.VisitPlanEntryRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -26,6 +27,9 @@ public class ScheduleService {
 
     @Autowired
     private VisitPlanEntryService visitPlanEntryService;
+
+    @Autowired
+    private VisitPlanEntryRepository visitPlanEntryRepository;
     /**
      * Log a new schedule attempt (when a complaint is scheduled).
      */
@@ -133,6 +137,16 @@ public class ScheduleService {
                 dtos.add(new ScheduleDTO(s, c));
             }
         }
+        visitPlanEntryRepository
+                .findByScheduleDateBetweenAndApprovalStatusOrderByScheduleDateAscIdAsc(
+                        start,
+                        end,
+                        "APPROVED"
+                )
+                .stream()
+                .filter(entry -> !"COMPLAINT".equalsIgnoreCase(entry.getEntryType()))
+                .map(ScheduleDTO::manualActivity)
+                .forEach(dtos::add);
         return dtos;
     }
 

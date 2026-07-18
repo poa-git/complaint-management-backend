@@ -210,11 +210,21 @@ public class VisitPlanReportingService {
         Date sqlTo = Date.valueOf(to);
         if ("TRAVEL".equals(type)) return loadTravelRows(sqlFrom, sqlTo);
         if ("ELIGIBLE".equals(type)) {
-            List<VisitPlanSubmissionSnapshot> snapshots = submissionSnapshotRepository
+            List<VisitPlanSubmissionSnapshot> capturedSnapshots = submissionSnapshotRepository
                     .findByCapturedAtBetweenOrderByCapturedAtAscPlanIdAscSnapshotVersionAsc(
                             Timestamp.valueOf(from.atStartOfDay()),
                             Timestamp.valueOf(to.plusDays(1).atStartOfDay().minusNanos(1))
                     );
+            Map<LocalDate, VisitPlanSubmissionSnapshot> latestSnapshotByDay = new LinkedHashMap<>();
+            for (VisitPlanSubmissionSnapshot snapshot : capturedSnapshots) {
+                if (snapshot.getCapturedAt() != null) {
+                    latestSnapshotByDay.put(
+                            snapshot.getCapturedAt().toLocalDateTime().toLocalDate(),
+                            snapshot
+                    );
+                }
+            }
+            List<VisitPlanSubmissionSnapshot> snapshots = new ArrayList<>(latestSnapshotByDay.values());
             if (snapshots.isEmpty()) return List.of();
             Map<Long, VisitPlanSubmissionSnapshot> byId = snapshots.stream()
                     .collect(Collectors.toMap(VisitPlanSubmissionSnapshot::getId, Function.identity()));
@@ -277,11 +287,14 @@ public class VisitPlanReportingService {
     }
 
     private VisitPlanReportingResponse.Row entryRow(VisitPlanEntry entry, VisitPlan plan) {
+        String complaintId = !"COMPLAINT".equalsIgnoreCase(entry.getEntryType())
+                ? ""
+                : safe(entry.getComplaintId());
         return new VisitPlanReportingResponse.Row(
                 value(entry.getScheduleDate()),
                 safe(entry.getApprovalStatus()),
                 plan == null ? safe(entry.getApprovedBy()) : safe(plan.getCreatedBy()),
-                safe(entry.getComplaintId()), safe(entry.getBankName()), safe(entry.getBranchCode()),
+                complaintId, safe(entry.getBankName()), safe(entry.getBranchCode()),
                 safe(entry.getBranchName()), safe(entry.getCity()), safe(entry.getVisitorName()),
                 safe(entry.getVisitorStation()), safe(entry.getComplaintStatus()), safe(entry.getCourierStatus()),
                 entry.getComplaintAge(), entry.getHardwareDeliveryAge(), safe(entry.getPriorityLabel()),
@@ -297,11 +310,14 @@ public class VisitPlanReportingService {
             String toLocation,
             String routeNote
     ) {
+        String complaintId = !"COMPLAINT".equalsIgnoreCase(entry.getEntryType())
+                ? ""
+                : safe(entry.getComplaintId());
         return new VisitPlanReportingResponse.Row(
                 value(entry.getScheduleDate()),
                 safe(entry.getApprovalStatus()),
                 plan == null ? safe(entry.getApprovedBy()) : safe(plan.getCreatedBy()),
-                safe(entry.getComplaintId()), safe(entry.getBankName()), safe(entry.getBranchCode()),
+                complaintId, safe(entry.getBankName()), safe(entry.getBranchCode()),
                 safe(entry.getBranchName()), safe(entry.getCity()), safe(entry.getVisitorName()),
                 safe(entry.getVisitorStation()), safe(entry.getComplaintStatus()), safe(entry.getCourierStatus()),
                 entry.getComplaintAge(), entry.getHardwareDeliveryAge(), safe(entry.getPriorityLabel()),
@@ -329,6 +345,9 @@ public class VisitPlanReportingService {
     }
 
     private String routeNote(VisitPlanEntry entry, int index) {
+        if ("NO_PENDING_COMPLAINT".equalsIgnoreCase(entry.getEntryType())) {
+            return "No travel required - visitor has no pending complaint";
+        }
         if (entry.getRouteDistanceKm() != null || entry.getRouteDurationMinutes() != null) {
             return index == 0 ? "Stored route from selected route option" : "Stored route summary from selected route option";
         }
@@ -336,6 +355,9 @@ public class VisitPlanReportingService {
     }
 
     private String destinationLabel(VisitPlanEntry entry) {
+        if ("NO_PENDING_COMPLAINT".equalsIgnoreCase(entry.getEntryType())) {
+            return "No pending complaint";
+        }
         String branch = safe(entry.getBranchName());
         String city = safe(entry.getCity());
         if (!branch.isBlank() && !city.isBlank()) return branch + " / " + city;

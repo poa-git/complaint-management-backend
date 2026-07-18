@@ -106,7 +106,9 @@ public class VisitPlanReportService {
                 );
         List<ReportRow> rows = entries.stream()
                 .map(entry -> new ReportRow(
-                        safe(entry.getComplaintId()),
+                        !"COMPLAINT".equalsIgnoreCase(entry.getEntryType())
+                                ? ""
+                                : safe(entry.getComplaintId()),
                         reportDate.toString(),
                         safe(entry.getVisitorName()),
                         safe(entry.getVisitorStation()),

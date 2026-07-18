@@ -152,6 +152,15 @@ public class VisitPlanWorkflowService {
                     "Assign a visitor before approving " + entry.getComplaintId() + "."
             );
         }
+        if (!"COMPLAINT".equalsIgnoreCase(safe(entry.getEntryType()))) {
+            if ("NEW_INSTALLATION".equalsIgnoreCase(entry.getEntryType())
+                    && safe(entry.getRouteDestination()).isBlank()
+                    && safe(entry.getCity()).isBlank()) {
+                throw new IllegalArgumentException("Enter a destination before approving the new installation.");
+            }
+            markEntryApproved(entry);
+            return;
+        }
         ComplaintLog complaint = complaintLogRepository.findByComplaintId(entry.getComplaintId())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Complaint not found: " + entry.getComplaintId()
@@ -173,6 +182,10 @@ public class VisitPlanWorkflowService {
                         "Could not schedule complaint: " + entry.getComplaintId()
                 ));
 
+        markEntryApproved(entry);
+    }
+
+    private void markEntryApproved(VisitPlanEntry entry) {
         entry.setApprovalStatus("APPROVED");
         entry.setApprovedBy(currentUsername());
         entry.setApprovedAt(new Timestamp(System.currentTimeMillis()));

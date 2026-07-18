@@ -1,12 +1,15 @@
 package com.system.complaints.service;
 
 import com.system.complaints.dto.VisitPlanApproveRequest;
+import com.system.complaints.dto.VisitPlanInstallationRequest;
 import com.system.complaints.dto.VisitPlanWorkflowResponse;
 import com.system.complaints.model.ComplaintLog;
 import com.system.complaints.model.VisitPlan;
 import com.system.complaints.model.VisitPlanEntry;
+import com.system.complaints.model.Visitor;
 import com.system.complaints.repository.VisitPlanEntryRepository;
 import com.system.complaints.repository.VisitPlanRepository;
+import com.system.complaints.repository.VisitorRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -14,18 +17,22 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Date;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class VisitPlanEntryService {
     private final VisitPlanEntryRepository entryRepository;
     private final VisitPlanRepository planRepository;
+    private final VisitorRepository visitorRepository;
 
     public VisitPlanEntryService(
             VisitPlanEntryRepository entryRepository,
-            VisitPlanRepository planRepository
+            VisitPlanRepository planRepository,
+            VisitorRepository visitorRepository
     ) {
         this.entryRepository = entryRepository;
         this.planRepository = planRepository;
+        this.visitorRepository = visitorRepository;
     }
 
     @Transactional
@@ -43,17 +50,7 @@ public class VisitPlanEntryService {
             VisitPlanApproveRequest request
     ) {
         String username = currentUsername();
-        VisitPlan plan = findEditablePlan(username, scheduleDate);
-        if (plan == null) {
-            plan = new VisitPlan();
-            plan.setScheduleDate(scheduleDate);
-            plan.setCreatedBy(username);
-            plan.setStatus("DRAFT");
-            plan = planRepository.save(plan);
-        } else if ("REJECTED".equals(plan.getStatus())) {
-            plan.setStatus("DRAFT");
-            plan = planRepository.save(plan);
-        }
+        VisitPlan plan = getOrCreateEditablePlan(username, scheduleDate);
 
         VisitPlanEntry entry = entryRepository
                 .findByPlanIdAndComplaintId(plan.getId(), complaint.getComplaintId())
@@ -91,6 +88,62 @@ public class VisitPlanEntryService {
                 && entryRepository.countByPlanId(previousPlanId) == 0) {
             planRepository.deleteById(previousPlanId);
         }
+        return response(plan);
+    }
+
+    @Transactional
+    public VisitPlanWorkflowResponse saveInstallationToPlan(VisitPlanInstallationRequest request) {
+        String entryType = safe(request == null ? null : request.getEntryType()).toUpperCase();
+        if (entryType.isBlank()) entryType = "NEW_INSTALLATION";
+        if (!List.of("NEW_INSTALLATION", "NO_PENDING_COMPLAINT").contains(entryType)) {
+            throw new IllegalArgumentException("Unknown additional visit type.");
+        }
+        if (request == null || request.getVisitorId() == null) {
+            throw new IllegalArgumentException("Select a visitor for the planned activity.");
+        }
+        String destination = safe(request.getDestination());
+        if ("NEW_INSTALLATION".equals(entryType) && destination.isBlank()) {
+            throw new IllegalArgumentException("Enter the installation destination.");
+        }
+        if (destination.length() > 255) {
+            throw new IllegalArgumentException("Installation destination cannot exceed 255 characters.");
+        }
+        Date scheduleDate;
+        try {
+            scheduleDate = Date.valueOf(safe(request.getScheduleDate()));
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Select a valid activity schedule date.");
+        }
+
+        Visitor visitor = visitorRepository.findById(request.getVisitorId())
+                .orElseThrow(() -> new IllegalArgumentException("Selected visitor was not found."));
+        String visitorName = safe(visitor.getName());
+        if (visitorName.isBlank()) {
+            throw new IllegalArgumentException("Selected visitor has no name.");
+        }
+
+        VisitPlan plan = getOrCreateEditablePlan(currentUsername(), scheduleDate);
+        VisitPlanEntry entry = new VisitPlanEntry();
+        entry.setPlanId(plan.getId());
+        entry.setEntryType(entryType);
+        entry.setComplaintId("PLAN-ACTIVITY-" + UUID.randomUUID());
+        entry.setScheduleDate(scheduleDate);
+        entry.setVisitorId(visitor.getId());
+        entry.setVisitorName(visitorName);
+        entry.setVisitorStation(safe(visitor.getCity()));
+        boolean installation = "NEW_INSTALLATION".equals(entryType);
+        entry.setCity(installation ? destination : "");
+        entry.setComplaintStatus(installation ? "New Installation" : "No Pending Complaint");
+        entry.setPriorityType(installation ? "INSTALLATION" : "NO_PENDING_COMPLAINT");
+        entry.setPriorityLabel(installation ? "New installation" : "No pending complaint");
+        entry.setPriorityDetail(installation
+                ? "Installation visit at " + destination
+                : "No pending complaint for this visitor");
+        entry.setRouteOrigin(safe(visitor.getCity()));
+        entry.setRouteDestination(installation ? destination : "");
+        entry.setOutcomeStatus("Scheduled");
+        entry.setApprovalStatus(plan.getStatus());
+        entryRepository.save(entry);
         return response(plan);
     }
 
@@ -207,6 +260,22 @@ public class VisitPlanEntryService {
                 .orElse(null);
     }
 
+    private VisitPlan getOrCreateEditablePlan(String username, Date scheduleDate) {
+        VisitPlan plan = findEditablePlan(username, scheduleDate);
+        if (plan == null) {
+            plan = new VisitPlan();
+            plan.setScheduleDate(scheduleDate);
+            plan.setCreatedBy(username);
+            plan.setStatus("DRAFT");
+            return planRepository.save(plan);
+        }
+        if ("REJECTED".equals(plan.getStatus())) {
+            plan.setStatus("DRAFT");
+            return planRepository.save(plan);
+        }
+        return plan;
+    }
+
     private void fillSnapshot(
             VisitPlanEntry entry,
             ComplaintLog complaint,
@@ -256,5 +325,9 @@ public class VisitPlanEntryService {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         return authentication != null && authentication.getAuthorities().stream()
                 .anyMatch(authority -> "ADMIN".equals(authority.getAuthority()));
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value.trim();
     }
 }

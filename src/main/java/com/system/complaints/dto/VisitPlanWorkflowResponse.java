@@ -38,6 +38,7 @@ public class VisitPlanWorkflowResponse {
 
     public static class Item {
         public Long id;
+        public String entryType;
         public String complaintId;
         public String scheduleDate;
         public String visitorName;
@@ -60,7 +61,10 @@ public class VisitPlanWorkflowResponse {
         static Item from(VisitPlanEntry entry) {
             Item item = new Item();
             item.id = entry.getId();
-            item.complaintId = entry.getComplaintId();
+            item.entryType = entry.getEntryType();
+            item.complaintId = "COMPLAINT".equalsIgnoreCase(entry.getEntryType())
+                    ? entry.getComplaintId()
+                    : null;
             item.scheduleDate = value(entry.getScheduleDate());
             item.visitorName = entry.getVisitorName();
             item.visitorStation = entry.getVisitorStation();

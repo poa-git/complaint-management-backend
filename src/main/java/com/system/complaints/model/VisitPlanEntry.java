@@ -25,6 +25,8 @@ public class VisitPlanEntry {
     @Column(nullable = false)
     private String complaintId;
 
+    private String entryType;
+
     @Column(nullable = false, columnDefinition = "date")
     private Date scheduleDate;
 
@@ -61,6 +63,7 @@ public class VisitPlanEntry {
         Timestamp now = new Timestamp(System.currentTimeMillis());
         createdAt = now;
         updatedAt = now;
+        if (entryType == null || entryType.isBlank()) entryType = "COMPLAINT";
         if (outcomeStatus == null || outcomeStatus.isBlank()) outcomeStatus = "Scheduled";
     }
 
@@ -74,6 +77,8 @@ public class VisitPlanEntry {
     public void setPlanId(Long value) { planId = value; }
     public String getComplaintId() { return complaintId; }
     public void setComplaintId(String value) { complaintId = value; }
+    public String getEntryType() { return entryType == null || entryType.isBlank() ? "COMPLAINT" : entryType; }
+    public void setEntryType(String value) { entryType = value; }
     public Date getScheduleDate() { return scheduleDate; }
     public void setScheduleDate(Date value) { scheduleDate = value; }
     public java.util.Date getApprovedAt() { return approvedAt; }

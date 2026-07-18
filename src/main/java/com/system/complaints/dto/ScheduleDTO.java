@@ -3,6 +3,7 @@ package com.system.complaints.dto;
 import java.sql.Date;
 
 public class ScheduleDTO {
+    public String activityType;
     public String complaintId;
     public String city;
     public String bank;
@@ -24,6 +25,7 @@ public class ScheduleDTO {
             String status,
             String performedBy
     ) {
+        this.activityType = "Complaint";
         this.complaintId = complaintId;
         this.city = city;
         this.bank = bank;
@@ -37,6 +39,7 @@ public class ScheduleDTO {
 
     // Or add a constructor that takes Schedule and ComplaintLog
     public ScheduleDTO(com.system.complaints.model.Schedule s, com.system.complaints.model.ComplaintLog c) {
+        this.activityType = "Complaint";
         this.complaintId = s.getComplaintId();
         this.city = c.getCity();
         this.bank = c.getBankName();
@@ -48,6 +51,27 @@ public class ScheduleDTO {
                 : new java.sql.Date(s.getScheduledFor().getTime());
         this.status = s.getOutcomeStatus();
         this.performedBy = s.getPerformedBy();
+    }
+
+    public static ScheduleDTO manualActivity(com.system.complaints.model.VisitPlanEntry entry) {
+        boolean installation = "NEW_INSTALLATION".equalsIgnoreCase(entry.getEntryType());
+        String activity = installation ? "New Installation" : "No Pending Complaint";
+        String city = installation ? entry.getCity() : entry.getVisitorStation();
+        ScheduleDTO dto = new ScheduleDTO(
+                null,
+                city,
+                activity,
+                installation
+                        ? (entry.getRouteDestination() == null ? entry.getCity() : entry.getRouteDestination())
+                        : "No pending complaint",
+                "-",
+                entry.getVisitorName(),
+                entry.getScheduleDate(),
+                entry.getOutcomeStatus(),
+                entry.getApprovedBy()
+        );
+        dto.activityType = activity;
+        return dto;
     }
 
 }

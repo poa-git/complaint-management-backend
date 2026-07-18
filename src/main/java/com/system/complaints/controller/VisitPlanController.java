@@ -5,6 +5,7 @@ import com.system.complaints.dto.RouteSuggestionResponse;
 import com.system.complaints.dto.NearestStationResponse;
 import com.system.complaints.dto.VisitPlanApproveRequest;
 import com.system.complaints.dto.VisitPlanApproveResponse;
+import com.system.complaints.dto.VisitPlanInstallationRequest;
 import com.system.complaints.dto.VisitPlanReviewResponse;
 import com.system.complaints.dto.VisitPlanWorkflowResponse;
 import com.system.complaints.service.GoogleRouteSuggestionService;
@@ -71,6 +72,13 @@ public class VisitPlanController {
             @RequestBody(required = false) VisitPlanApproveRequest request
     ) {
         return ResponseEntity.ok(visitPlanReviewService.saveComplaintToPlan(complaintId, request));
+    }
+
+    @PostMapping("/plans/installations")
+    public ResponseEntity<VisitPlanWorkflowResponse> saveInstallation(
+            @RequestBody VisitPlanInstallationRequest request
+    ) {
+        return ResponseEntity.ok(visitPlanEntryService.saveInstallationToPlan(request));
     }
 
     @GetMapping("/plans/mine")
